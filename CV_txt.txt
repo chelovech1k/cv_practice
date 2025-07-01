@@ -1,0 +1,77 @@
+from tensorflow import keras
+import numpy as np
+import os
+import glob
+import cv2 as cv
+from PIL import Image, ImageFilter
+from scipy.io import loadmat
+#from preprocessing import convert_seq_to_png
+#from preprocessing import squarify_images
+#from preprocessing import vbb_to_txt
+import pickle
+
+with open('path1', 'rb') as file: #path1 - расположение файла X_train.pickle
+    X_train = pickle.load(file)
+
+with open('path2', 'rb') as file:
+    X_test = pickle.load(file)
+
+with open('path3', 'rb') as file:
+    y_train = pickle.load(file)
+
+with open('path4', 'rb') as file:
+    y_test = pickle.load(file)
+
+print('создана выборка') #уже масштабированная, чёрно-белая
+
+X_train = np.expand_dims(X_train, axis = -1) #добавление фиктивной размерности для подачи в модель
+X_test = np.expand_dims(X_test, axis = -1)
+print(X_train.shape, X_test.shape, len(y_train), len(y_test)) #информация о выборке (в пикселях)
+
+#архитектура нейросети
+model = keras.models.Sequential([
+    keras.layers.InputLayer(shape=(192, 192, 1)), #входной слой
+    keras.layers.Conv2D( #свёрточный слой
+			filters=64,  #количество фильтров (нейронов и их весов)
+                        kernel_size=(3, 3),  #размер фильтра
+                        activation='relu',  #активация свёрточного слоя
+                        use_bias=True),  #применение смещения
+    keras.layers.MaxPooling2D(pool_size=(2, 2)),  # размер окна max pooling (отбор максимальных значений)
+
+    keras.layers.Conv2D(filters = 128,
+                        kernel_size = (3, 3),
+                        activation = 'relu',
+                        use_bias = True),
+    keras.layers.MaxPooling2D(pool_size=(2, 2)),
+
+    keras.layers.Flatten(), #запись признаков в виде вектора
+    keras.layers.Dropout(rate=0.5), #случайное исключение половины из них (против переобучения)
+    keras.layers.Dense(2, activation='softmax'), #выходной слой для классификации (2 класса)
+])
+
+model.compile( #компиляция модели
+  optimizer = keras.optimizers.Adam(learning_rate = 0.001), #алгоритм оптимизации с шагом 0.001
+  loss = 'categorical_crossentropy', #потери (имеет иной масштаб, нежели точность; может быть больше 1; 0.3 уже круто)
+  metrics = ['accuracy'], #метрика - точность
+)
+
+print('модель создана')
+
+model.fit( #обучение модели
+    X_train,
+    keras.utils.to_categorical(y_train),
+    batch_size = 64, #размер части выборки, подаваемой за 1 раз нейросети (у меня при больше чем 64 комп уходил в отрицалово, даже alt ctrl del не срабатывал)
+    epochs=3, #кол-во прохождений по всей выборке (min 2; за 1 эпоху проходим по всем батчам)
+    validation_split = 0.2 #доля выборки, исключаемая из обучения, на которой после каждой эпохи проверяется модель (по ухудшению можно понять, когда начинается переобучение)
+)
+
+print('модель обучена')
+
+loss, accuracy = model.evaluate(X_test, keras.utils.to_categorical(y_test)) #тестирование модели
+print(f"Test Loss: {loss}")
+print(f"Test Accuracy: {accuracy}")
+
+model.save('path') #сохранение обученной модели
+#или так
+#model.save('model1.h5')
+
